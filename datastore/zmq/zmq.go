@@ -63,6 +63,7 @@ type ZMQProducer struct {
 	namespace          string
 	ctx                context.Context
 	sock               *zmq4.Socket
+	sockMu             *sync.Mutex
 	logger             *logrus.Logger
 	airbrakeHandler    *airbrake.AirbrakeHandler
 	ackChan            chan (*telemetry.Record)
@@ -74,7 +75,9 @@ func (p *ZMQProducer) Produce(rec *telemetry.Record) {
 	if p.ctx.Err() != nil {
 		return
 	}
+	sockMu.Lock()
 	nBytes, err := p.sock.SendMessage(telemetry.BuildTopicName(p.namespace, rec.TxType), rec.Payload())
+	sockMu.Unlock()
 	if err != nil {
 		metricsRegistry.errorCount.Inc(map[string]string{"record_type": rec.TxType})
 		p.ReportError("zmq_dispatch_error", err, nil)
@@ -172,6 +175,7 @@ func NewProducer(ctx context.Context, config *Config, metrics metrics.MetricColl
 		namespace:          namespace,
 		ctx:                ctx,
 		sock:               sock,
+		sockMu:             &sync.Mutex{},
 		logger:             logger,
 		airbrakeHandler:    airbrakeHandler,
 		ackChan:            ackChan,
